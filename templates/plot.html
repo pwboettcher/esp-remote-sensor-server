@@ -1,0 +1,32 @@
+<head>
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+</head>
+
+<!-- Plots go in blank <div> elements.
+    You can size them in the plot layout,
+    or give the div a size as shown here.
+-->
+<div id="main_plot" style="width:90%;height:800px;"></div>
+<div>
+    <a href="/sensors">Edit sensors</a>
+</div>
+<script>
+  PLOT_DIV = document.getElementById('main_plot');
+  var data_fetch_endpoint = "{{ url_for('get_data') }}";
+
+  Plotly.d3.json(data_fetch_endpoint, function(err, data) {
+      meas = data['measurements'];
+
+      var layout = {
+        title: 'Measurements',
+        xaxis: {tickfont: { size: 14 } },
+        yaxis: {title: 'Strain'},
+        yaxis2: {title: 'Activity', overlaying: 'y', side: 'right'},
+      };
+
+      Plotly.plot(PLOT_DIV,  meas, layout);
+  });
+
+</script>
