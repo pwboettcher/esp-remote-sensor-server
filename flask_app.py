@@ -1,7 +1,7 @@
 # Copyright 2021 Peter Boettcher
 # Distributed under the terms of the MIT License
 
-from flask import Flask, request, jsonify, redirect, render_template
+from flask import Flask, request, jsonify, redirect, render_template, make_response
 import MySQLdb
 
 app = Flask(__name__)
@@ -21,8 +21,8 @@ def root():
 
 # API endpoint to get x/y data for plotting.  The data is provided
 # exactly as plotly wants
-@app.route('/get_data')
-def get_data():
+@app.route('/get_data/<int:days>')
+def get_data(days: int = 1):
     db=connect_db()
     cursor = db.cursor()
     data = []
@@ -45,9 +45,14 @@ def get_data():
         idmap[r[0]] = len(data)
         data.append( traceobj )
 
+    validated_days = int(days)
+    if validated_days < 1:
+        validated_days = 1
+    elif validated_days > 365:
+        validated_days = 365
     cursor.execute("SELECT DATE_FORMAT( CONVERT_TZ(time, 'UTC', 'America/New_York'), '%Y-%m-%d %k:%i:%s') as t, id, val "
-                   " from measurements WHERE timestampdiff(DAY, time, '2020-01-01') BETWEEN -60 AND 120")
-                   # " from measurements WHERE timestampdiff(HOUR, time, now()) <= 24")
+                   #" from measurements WHERE timestampdiff(DAY, time, '2020-01-01') BETWEEN -60 AND 120")
+                    " from measurements WHERE timestampdiff(DAY, time, now()) <= " + str(validated_days))
 
     for d in cursor:
         idx = idmap.get(d[1], -1)
@@ -57,12 +62,19 @@ def get_data():
 
     return jsonify(measurements=data)
 
+def do_log(msg):
+    db=connect_db()
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO log (msg) VALUES (%s)", (str(msg), ))
+    db.commit()
+
 # Accept incoming measurements, map the sensor serial number to id,
 # and insert into database
 @app.route('/post_measurements', methods=['GET', 'POST'])
 def post_temps():
     db=connect_db()
     js = request.get_json(force=True)
+    print(js)
 
     for s in js['measurements']:
         if 'debug' in s:
@@ -72,18 +84,18 @@ def post_temps():
         data = None
         while not data:
             cursor = db.cursor()
-            cursor.execute("SELECT id from sensors where sn = '%s'" % sn)
+            cursor.execute("SELECT id from sensors where sn = %s", (sn,))
             data = cursor.fetchone()
             if data:
                 id = data[0]
             else:
                 cursor = db.cursor()
-                cursor.execute("INSERT INTO sensors (sn, stype) VALUES ('%s', '%s')" % (sn, s['type']))
+                cursor.execute("INSERT INTO sensors (sn, stype) VALUES (%s, %s)", (sn, s['type']))
 
         cursor = db.cursor()
         if not t:
             t = 0.0
-        cursor.execute("INSERT INTO measurements (id, val) VALUES (%i, %f)" % (id, float(t)))
+        cursor.execute("INSERT INTO measurements (id, val) VALUES (%s, %s)", (id, float(t)))
         db.commit()
 
     return jsonify({'success': [1, 1]})
@@ -94,8 +106,12 @@ def post_temps():
 @app.route('/hello', methods=['GET', 'POST'])
 def hello():
     js = request.get_json(force=True)
-    print(js)
-    return jsonify(data={'fwversion': 11})
+    do_log('New connection from ' + js['chip'] + ' with sensors:')
+    sstr = ''
+    for s in js['sensors']:
+        sstr = sstr + '[%s %s] ' % (s['type'], s['id'])
+    do_log(sstr)
+    return jsonify(data={'fwversion': 12})
 
 # Template-based user-page to view and edit names of sensors
 @app.route('/sensors')
@@ -119,3 +135,12 @@ def sensoredit():
     db.commit()
     return jsonify({'success': 1})
 
+@app.route('/logs')
+def logs():
+    db=connect_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT time, msg from log ORDER BY time DESC LIMIT 50")
+    text = [ str(r[0]) + ' ' + r[1] for r in cursor ]
+    response = make_response("\n".join(text), 200)
+    response.mimetype = "text/plain"
+    return response

@@ -11,10 +11,11 @@
 <div id="main_plot" style="width:90%;height:800px;"></div>
 <div>
     <a href="/sensors">Edit sensors</a>
+    <a href="/logs">View logs</a>
 </div>
 <script>
   PLOT_DIV = document.getElementById('main_plot');
-  var data_fetch_endpoint = "{{ url_for('get_data') }}";
+  var data_fetch_endpoint = "{{ url_for('get_data', days=1) }}";
 
   Plotly.d3.json(data_fetch_endpoint, function(err, data) {
       meas = data['measurements'];
@@ -22,8 +23,8 @@
       var layout = {
         title: 'Measurements',
         xaxis: {tickfont: { size: 14 } },
-        yaxis: {title: 'Strain'},
-        yaxis2: {title: 'Activity', overlaying: 'y', side: 'right'},
+        yaxis: {title: 'Temperatures'}
+        //yaxis2: {title: 'Activity', overlaying: 'y', side: 'right'},
       };
 
       Plotly.plot(PLOT_DIV,  meas, layout);
